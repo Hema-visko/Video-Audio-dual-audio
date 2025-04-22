@@ -84,133 +84,125 @@ def convert_mp4_to_wav(input_file, output_file):
     audio.export(output_file, format="wav")
 
 def video_analyzer(video_path):
-   
-    #  Trained model
-    model_best = load_model(r'C:\Users\pc\OneDrive\Desktop\Video_object_detection\face_model.h5')  # Set your model file path
+  try:
+      #  Trained model
+      model_best = load_model('/home/ritik/audio/face_model.h5')  # Set your model file path
 
-    # Classes for 7 emotional states
-    class_names = ['Angry', 'Disgusted', 'Fear', 'Happy', 'Sad', 'Surprise', 'Neutral']
+      # Classes for 7 emotional states
+      class_names = ['Angry', 'Disgusted', 'Fear', 'Happy', 'Sad', 'Surprise', 'Neutral']
 
-    # Load the pre-trained face cascade
-    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-
-
-    output_folder = 'tcs_'  # Folder to save frames
-    os.makedirs(output_folder, exist_ok=True)
-
-    # Clear the output folder before saving new frames
-    for file in os.listdir(output_folder):
-        file_path = os.path.join(output_folder, file)
-        if os.path.isfile(file_path):
-            os.remove(file_path)
+      # Load the pre-trained face cascade
+      face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
 
-    csv_path = 'emotion_results_tcs.csv'
+      output_folder = 'tcs_'  # Folder to save frames
+      os.makedirs(output_folder, exist_ok=True)
+
+      # Clear the output folder before saving new frames
+      for file in os.listdir(output_folder):
+          file_path = os.path.join(output_folder, file)
+          if os.path.isfile(file_path):
+              os.remove(file_path)
 
 
-    cap = cv2.VideoCapture(video_path)
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-
-    target_frames = sorted(random.sample(range(total_frames), min(255, total_frames)))
-    frame_indices = set(target_frames)
-    frame_count = 0
-
-    # Dictionary to store results
-    results = {}
-
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        if frame_count in frame_indices:
-            # Save frame
-            frame_filename = os.path.join(output_folder, f'frame_{frame_count:04d}.jpg')
-            cv2.imwrite(frame_filename, frame)
-
-            # Convert the frame to grayscale for face detection
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-            # Detect faces in the frame
-            faces = face_cascade.detectMultiScale(gray, scaleFactor=1.3, minNeighbors=5, minSize=(30, 30))
-
-            # Process each detected face
-            for (x, y, w, h) in faces:
-                face_roi = frame[y:y + h, x:x + w]
-                face_image = cv2.resize(face_roi, (48, 48))
-                face_image = cv2.cvtColor(face_image, cv2.COLOR_BGR2GRAY)
-                face_image = image.img_to_array(face_image)
-                face_image = np.expand_dims(face_image, axis=0)
-                face_image = np.vstack([face_image])
-
-                # Predict emotion
-                predictions = model_best.predict(face_image)
-                emotion_label = class_names[np.argmax(predictions)]
-
-                # Overwrite result
-                results[frame_filename] = emotion_label
-
-        frame_count += 1
-
- 
+      csv_path = 'emotion_results_tcs.csv'
 
 
-    results_df = pd.DataFrame(list(results.items()), columns=['Frame', 'Emotion'])
-    results_df.to_csv(csv_path, index=False)
+      cap = cv2.VideoCapture(video_path)
+      total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+      target_frames = sorted(random.sample(range(total_frames), min(255, total_frames)))
+      frame_indices = set(target_frames)
+      frame_count = 0
+
+      # Dictionary to store results
+      results = {}
+
+      while cap.isOpened():
+          ret, frame = cap.read()
+          if not ret:
+              break
+
+          if frame_count in frame_indices:
+              # Save frame
+              frame_filename = os.path.join(output_folder, f'frame_{frame_count:04d}.jpg')
+              cv2.imwrite(frame_filename, frame)
+
+              # Convert the frame to grayscale for face detection
+              gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+              # Detect faces in the frame
+              faces = face_cascade.detectMultiScale(gray, scaleFactor=1.3, minNeighbors=5, minSize=(30, 30))
+
+              # Process each detected face
+              for (x, y, w, h) in faces:
+                  face_roi = frame[y:y + h, x:x + w]
+                  face_image = cv2.resize(face_roi, (48, 48))
+                  face_image = cv2.cvtColor(face_image, cv2.COLOR_BGR2GRAY)
+                  face_image = image.img_to_array(face_image)
+                  face_image = np.expand_dims(face_image, axis=0)
+                  face_image = np.vstack([face_image])
+
+                  # Predict emotion
+                  predictions = model_best.predict(face_image)
+                  emotion_label = class_names[np.argmax(predictions)]
+
+                  # Overwrite result
+                  results[frame_filename] = emotion_label
+
+          frame_count += 1
+
+  
+
+      results_df = pd.DataFrame(list(results.items()), columns=['Frame', 'Emotion'])
+      results_df.to_csv(csv_path, index=False)
+
+      # Count occurrences of each emotion
+      face_emotion = results_df['Emotion'].value_counts().to_dict()
+      print(face_emotion)
 
 
-
-    # Count occurrences of each emotion
-    face_emotion = results_df['Emotion'].value_counts().to_dict()
-    print(face_emotion)
-
-
-
-    positive_emotions = ['Happy', 'Surprise', 'Neutral']
-    negative_emotions = ['Sad', 'Angry', 'Fear']
-    positive = []
-    negative = []
+      positive_emotions = ['Happy', 'Surprise', 'Neutral']
+      negative_emotions = ['Sad', 'Angry', 'Fear']
+      positive = []
+      negative = []
+      total_emotions = []
+      positive_detected = []
+      negative_detected = []
 
 
-    try:
-        if any(emotion in face_emotion for emotion in positive_emotions):
-            positive_count = sum(face_emotion.get(emotion, 0) for emotion in positive_emotions)
-            total_count = sum(face_emotion.values())
-            positive_score = (positive_count / total_count) * 100 if total_count > 0 else 0
-            # print(f"Positive Emotion Score: {positive_score:.2f}%")
-            positive.append(positive_score)
-        else:
-            print("No Positive Emotions detected.")
+      for emotions,num in face_emotion.items():
+          total_emotions.append(num)
+          if emotions in positive_emotions:
+              positive_detected.append(num)
+          elif emotions in negative_emotions:
+              negative_detected.append(num)
+          
 
-        final_overall_score = []
-        if any(emotion in face_emotion for emotion in negative_emotions):
-            negative_count = sum(face_emotion.get(emotion, 0) for emotion in negative_emotions)
-            total_count = sum(face_emotion.values())
-            negative_score = (negative_count / total_count) * 100 if total_count > 0 else 0
-       
-            negative.append(negative_score)
+      total_emotions_count = sum(total_emotions)
+      print("Positive emotions detected:", positive_detected)
+      print("Negative emotions detected:", negative_detected)
 
-            if negative_score>positive_score:
-                print(f"finalloverall score {(positive_score*2.0)-negative_score}")
-                final_overall_score=((positive_score*2.0)-negative_score)
-            else:
-                final_overall_score = positive_score-negative_score
-        else:
-            print("No Negative Emotions detected.")
-        print(negative,positive)
-        print(f"finalloverall score : {final_overall_score}")
+      print(total_emotions_count)
 
-        data = {
-        "overall_video_score": final_overall_score,
-        "positive_emotions_score": positive[0],
-        "negative_emotions_score": negative[0],
-        }
-        data_str = json.dumps(data)
+      pos=  (sum(positive_detected)/total_emotions_count)*100
+      neg = (sum(negative_detected)/total_emotions_count)*100
+      overall_score = pos * (1-(neg/100))
 
-        return json.loads(data_str)
-    except:
+      print("no emotion detected")
+      print('positive score',positive_detected)
+      print('negative score',negative_detected)
+      data = {
+          "overall_video_score": overall_score,
+          "positive_emotions_score": pos,
+          "negative_emotions_score": neg,
+      }
+      
+      return data
 
-        return positive[0]
+  except Exception as e:
+        print(f"Error occurred: {e}")
+        return 'No emotion detected'
 
 
 def load_audio(file):
