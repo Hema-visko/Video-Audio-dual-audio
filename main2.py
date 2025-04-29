@@ -754,6 +754,24 @@ def analyze_audio_video():
         file.save(video_path)
 
         
+
+        data = cv2.VideoCapture(video_path) 
+            
+
+        frames = data.get(cv2.CAP_PROP_FRAME_COUNT) 
+        fps = data.get(cv2.CAP_PROP_FPS) 
+
+        
+        # calculate duration of the video 
+        seconds = round(frames / fps) 
+        if seconds<=80:
+            video_time = datetime.timedelta(seconds=seconds) 
+            print(f"duration in seconds: {seconds}") 
+            print(f"video time: {video_time}") 
+        else:
+            return 'Video Duration is Higher it must be less that 1.10 minutes'
+
+        
         audio_path = os.path.join(upload_folder, "audio_output.wav")
         convert_mp4_to_wav(video_path, audio_path)
 
