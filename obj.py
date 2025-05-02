@@ -800,54 +800,44 @@ def analyze_video(video_path):
 
 
 @app.route('/analyzer', methods=['POST'])
-def analyze_audio_video():
-    try: 
-        # File validation
-        if 'file' not in request.files:
-            return jsonify({"message": "No file provided", "status": False}), 400
-            
-        file = request.files['file']
-        if file.filename == '':
-            return jsonify({"message": "No file selected", "status": False}), 400
-        
-        if not file.filename.lower().endswith(".mp4"):
-            return jsonify({"message": "Only MP4 files are supported", "status": False}), 400
+def analyze_video_endpoint():
+    try:
+        file = request.files.get("file")
+        graph_flag = request.form.get("graph", "false").lower() == "true"
+
+        if not file or not file.filename.lower().endswith(".mp4"):
+            return jsonify({"message": "Valid MP4 file is required", "status": False}), 400
 
         # Create upload directory
         upload_folder = "./myaud"
         os.makedirs(upload_folder, exist_ok=True)
-        
-        # Save file securely
+
         video_path = os.path.join(upload_folder, secure_filename(file.filename))
         file.save(video_path)
 
-        
-
-        data = cv2.VideoCapture(video_path) 
-            
-
-        frames = data.get(cv2.CAP_PROP_FRAME_COUNT) 
-        fps = data.get(cv2.CAP_PROP_FPS) 
-
-        
-        # calculate duration of the video 
-        seconds = round(frames / fps) 
-        if seconds<=80:
-            video_time = datetime.timedelta(seconds=seconds) 
-            print(f"duration in seconds: {seconds}") 
-            print(f"video time: {video_time}") 
-        else:
-            return 'Video Duration is Higher it must be less that 1.10 minutes'
-
-        
+        # Extract audio
         audio_path = os.path.join(upload_folder, "audio_output.wav")
         convert_mp4_to_wav(video_path, audio_path)
 
-        # Speaker diarization
+        if graph_flag:
+            # Only return graph
+            times, pitch = analyze_pitch(audio_path)
+            buffer = plot_pitch(times, pitch, duration=10, title="Pitch Analysis")
+            buffer.seek(0)
+            return send_file(buffer, mimetype='image/png')
+
+        # --- Full Analysis Starts Here ---
+        data = cv2.VideoCapture(video_path)
+        frames = data.get(cv2.CAP_PROP_FRAME_COUNT)
+        fps = data.get(cv2.CAP_PROP_FPS)
+        seconds = round(frames / fps)
+
+        if seconds > 80:
+            return jsonify({"message": "Video must be less than 1 minute 20 seconds", "status": False}), 400
+
         segments, raw_probs = diarize_audio(audio_path)
         speaker_analysis = deep_tensor_to_python(segments)
 
-        # Parse speaker segments
         unique_speakers = set()
         if isinstance(speaker_analysis, list):
             for segment_group in speaker_analysis:
@@ -857,7 +847,6 @@ def analyze_audio_video():
                             speaker = segment.split()[-1]
                             unique_speakers.add(speaker)
 
-        # Immediate termination for multiple speakers
         if len(unique_speakers) > 1:
             return jsonify({
                 "message": "Multiple speakers detected - analysis terminated",
@@ -866,65 +855,26 @@ def analyze_audio_video():
                 "status": False
             }), 400
 
-        # Only proceed with full analysis if exactly one speaker
-        times, pitch = analyze_pitch(audio_path)
-        buffer = plot_pitch(times, pitch, duration=10, title="Pitch Analysis")
-        buffer.seek(0)
-
-        # audio_score, audio_detail = analyze_audio(audio_path)
-        # video_score = video_analyzer(video_path)
-
-        # Convert to Python-native types
-        # audio_score = deep_tensor_to_python(audio_score)
-        # video_score = deep_tensor_to_python(video_score)
-        # audio_detail = deep_tensor_to_python(audio_detail)
-
-
-
-        # audio_detail_formatted = {
-        #     "Pitch Mean:": str(audio_detail.get("Pitch Mean:", "")),
-        #     "Pitch Std:": str(audio_detail.get("Pitch Std:", "")),
-        #     "Speech Rate:": str(audio_detail.get("Speech Rate:", "")),
-        #     "Number of Pauses:": str(audio_detail.get("Number of Pauses:", "")),
-        #     "Filler Count words (um,uh):": str(audio_detail.get("Filler Count words (um,uh):", "")),
-        #     "Audio properties:": str(audio_detail.get("Audio properties:", ""))
-        # }
-
-        # Score normalization helper
-        # def normalize_score(score):
-        #     if isinstance(score, (int, float)):
-        #         return float(score)
-        #     elif isinstance(score, dict):
-        #         return float(score.get('overall_score', score.get('score', 0)))
-        #     elif isinstance(score, (list, tuple)) and len(score) > 0:
-        #         return float(sum(score) / len(score))
-        #     return 0.0
-
-      # Analyze audio and video
+        # Proceed with analysis
         audio, audio_detail = analyze_audio(audio_path)
         video = video_analyzer(video_path)
+        object_detection = analyze_video(video_path)
 
-        # Format audio_detail into desired structure
         if isinstance(audio_detail, str):
             audio_detail = json.loads(audio_detail)
 
         try:
-            vid_new11 = video["overall_video_score"]
-            print(audio)
-            print(vid_new11,type(vid_new11))
-            final_score = (vid_new11+audio)/2
+            vid_score = video["overall_video_score"]
+            final_score = (vid_score + audio) / 2
         except:
-            final_score = (video+audio)/2
- 
-        object_detection = analyze_video(video_path)
+            final_score = (video + audio) / 2
 
-        # Successful response
         return jsonify({
             "audio": audio,
-            "audio_details":audio_detail,
+            "audio_details": audio_detail,
             "video_analysis": video,
-            "speaker_analysis": speaker_analysis,
             "object_detection": object_detection,
+            "speaker_analysis": speaker_analysis,
             "final_overall_score": final_score,
             "message": "Analysis completed successfully",
             "status": True
@@ -936,61 +886,6 @@ def analyze_audio_video():
             "message": f"Processing error: {str(e)}",
             "status": False
         }), 500
-    
-@app.route('/graph', methods=['POST'])
-def graph_analysis():
-    try: 
-        file = request.files.get("file")
-        if not file:
-            return jsonify({
-                "message": "No file provided",
-                "status": False
-            }), 400
-        
-
-        if not file.filename.endswith(".mp4"):
-            return jsonify({
-                "message": "This is not an MP4 file",
-                "status": False
-            }), 400
-        
-        # Save the video file
-        upload_folder = "./myaud"
-
-        os.makedirs(upload_folder, exist_ok=True)
-
-        video_path = os.path.join(upload_folder, file.filename)
-
-
-        # Save the video file
-        # video_path = f"./upload/{file.filename}"
-        file.save(video_path)
-        
-        # Define the audio path
-        audio_path = f"./myaud/audio_output.wav"
- 
-        convert_mp4_to_wav(video_path, audio_path)
-
-
-        times, pitch = analyze_pitch(audio_path)
-
-        # # Generate pitch plot
-        buffer = plot_pitch(times, pitch, duration=10, title="Pitch Analysis")
-
-        # Clean up the temporary file
-        # os.remove(imagepath)
-        buffer.seek(0)
-
-        return send_file(buffer, mimetype='image/png')
-
-
-    except Exception as e:
-        print(f"Error: {e}")
-        return jsonify({
-            "message": "An error occurred during processing",
-            "status": False
-        }), 500
-
 
 if __name__ == "__main__":
     app.run(debug=True,port=8000)
